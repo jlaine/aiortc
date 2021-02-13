@@ -1,14 +1,15 @@
 import argparse
 import asyncio
-import json
 import logging
 import os
-import ssl
 import uuid
 
 import cv2
-from aiohttp import web
 from av import VideoFrame
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse, Response
+from starlette.routing import Route
+
 
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
@@ -16,7 +17,6 @@ from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
 ROOT = os.path.dirname(__file__)
 
 logger = logging.getLogger("pc")
-pcs = set()
 
 
 class VideoTransformTrack(MediaStreamTrack):
@@ -91,12 +91,12 @@ class VideoTransformTrack(MediaStreamTrack):
 
 async def index(request):
     content = open(os.path.join(ROOT, "index.html"), "r").read()
-    return web.Response(content_type="text/html", text=content)
+    return Response(content, media_type="text/html")
 
 
 async def javascript(request):
     content = open(os.path.join(ROOT, "client.js"), "r").read()
-    return web.Response(content_type="application/javascript", text=content)
+    return Response(content, media_type="application/javascript")
 
 
 async def offer(request):
@@ -105,17 +105,17 @@ async def offer(request):
 
     pc = RTCPeerConnection()
     pc_id = "PeerConnection(%s)" % uuid.uuid4()
-    pcs.add(pc)
+    app.state.peer_connections.add(pc)
 
     def log_info(msg, *args):
         logger.info(pc_id + " " + msg, *args)
 
-    log_info("Created for %s", request.remote)
+    log_info("Created for %s", request.client.host)
 
     # prepare local media
     player = MediaPlayer(os.path.join(ROOT, "demo-instruct.wav"))
-    if args.write_audio:
-        recorder = MediaRecorder(args.write_audio)
+    if app.state.write_audio:
+        recorder = MediaRecorder(app.state.write_audio)
     else:
         recorder = MediaBlackhole()
 
@@ -131,7 +131,7 @@ async def offer(request):
         log_info("Connection state is %s", pc.connectionState)
         if pc.connectionState == "failed":
             await pc.close()
-            pcs.discard(pc)
+            app.state.peer_connections.discard(pc)
 
     @pc.on("track")
     def on_track(track):
@@ -159,27 +159,38 @@ async def offer(request):
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
 
-    return web.Response(
-        content_type="application/json",
-        text=json.dumps(
-            {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}
-        ),
+    return JSONResponse(
+        {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}
     )
 
 
-async def on_shutdown(app):
+async def on_shutdown():
     # close peer connections
-    coros = [pc.close() for pc in pcs]
+    coros = [pc.close() for pc in app.state.peer_connections]
     await asyncio.gather(*coros)
-    pcs.clear()
+    app.state.peer_connections.clear()
+
+
+app = Starlette(
+    on_shutdown=[on_shutdown],
+    routes=[
+        Route("/", index),
+        Route("/client.js", javascript),
+        Route("/offer", offer, methods=["POST"]),
+    ],
+)
+app.state.peer_connections = set()
+app.state.write_audio = None
 
 
 if __name__ == "__main__":
+    import uvicorn
+
     parser = argparse.ArgumentParser(
         description="WebRTC audio / video / data-channels demo"
     )
-    parser.add_argument("--cert-file", help="SSL certificate file (for HTTPS)")
-    parser.add_argument("--key-file", help="SSL key file (for HTTPS)")
+    parser.add_argument("--ssl-certfile", help="SSL certificate file (for HTTPS)")
+    parser.add_argument("--ssl-keyfile", help="SSL key file (for HTTPS)")
     parser.add_argument(
         "--host", default="0.0.0.0", help="Host for HTTP server (default: 0.0.0.0)"
     )
@@ -195,17 +206,13 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(level=logging.INFO)
 
-    if args.cert_file:
-        ssl_context = ssl.SSLContext()
-        ssl_context.load_cert_chain(args.cert_file, args.key_file)
-    else:
-        ssl_context = None
+    if args.write_audio:
+        app.state.write_audio = args.write_audio
 
-    app = web.Application()
-    app.on_shutdown.append(on_shutdown)
-    app.router.add_get("/", index)
-    app.router.add_get("/client.js", javascript)
-    app.router.add_post("/offer", offer)
-    web.run_app(
-        app, access_log=None, host=args.host, port=args.port, ssl_context=ssl_context
+    uvicorn.run(
+        app,
+        host=args.host,
+        port=args.port,
+        ssl_certfile=args.ssl_certfile,
+        ssl_keyfile=args.ssl_keyfile,
     )
