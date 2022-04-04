@@ -254,13 +254,18 @@ class MediaRelayTest(MediaTestCase):
         source.stop()
 
         # continue reading
-        await asyncio.gather(proxy1.recv(), proxy2.recv())
-        for i in range(2):
+        got_exception = False
+        for i in range(10):
             exc1, exc2 = await asyncio.gather(
                 proxy1.recv(), proxy2.recv(), return_exceptions=True
             )
+            if isinstance(exc1, av.AudioFrame):
+                continue
+
             self.assertIsInstance(exc1, MediaStreamError)
             self.assertIsInstance(exc2, MediaStreamError)
+            got_exception = True
+        self.assertTrue(got_exception)
 
     @asynctest
     async def test_audio_stop_source_unbuffered(self):
@@ -288,12 +293,18 @@ class MediaRelayTest(MediaTestCase):
         source.stop()
 
         # continue reading
-        for i in range(2):
+        got_exception = False
+        for i in range(10):
             exc1, exc2 = await asyncio.gather(
                 proxy1.recv(), proxy2.recv(), return_exceptions=True
             )
+            if isinstance(exc1, av.AudioFrame):
+                continue
+
             self.assertIsInstance(exc1, MediaStreamError)
             self.assertIsInstance(exc2, MediaStreamError)
+            got_exception = True
+        self.assertTrue(got_exception)
 
     @asynctest
     async def test_audio_slow_consumer(self):
@@ -324,12 +335,12 @@ class MediaRelayTest(MediaTestCase):
         frame1, frame2 = await asyncio.gather(proxy1.recv(), proxy2.recv())
         self.assertEqual(frame1.format.name, "s16")
         self.assertEqual(frame1.layout.name, "mono")
-        self.assertEqual(frame1.pts, 5 * samples_per_frame)
+        self.assertGreaterEqual(frame1.pts, 5 * samples_per_frame)
         self.assertEqual(frame1.samples, samples_per_frame)
 
         self.assertEqual(frame2.format.name, "s16")
         self.assertEqual(frame2.layout.name, "mono")
-        self.assertEqual(frame2.pts, 5 * samples_per_frame)
+        self.assertGreaterEqual(frame2.pts, 5 * samples_per_frame)
         self.assertEqual(frame2.samples, samples_per_frame)
 
         # stop a consumer
