@@ -56,47 +56,45 @@ class MediaTestCase(CodecTestCase):
         audio_rate = 48000
         audio_samples = audio_rate // video_rate
 
-        container = av.open(path, "w")
-        audio_stream = container.add_stream("aac", rate=audio_rate)
-        video_stream = container.add_stream("mpeg4", rate=video_rate)
-        for video_frame in self.create_video_frames(
-            width=width, height=height, count=duration * video_rate
-        ):
-            audio_frame = self.create_audio_frame(
-                samples=audio_samples, pts=audio_pts, sample_rate=audio_rate
-            )
-            audio_pts += audio_samples
-            for packet in audio_stream.encode(audio_frame):
-                container.mux(packet)
+        with av.open(path, "w") as container:
+            audio_stream = container.add_stream("aac", rate=audio_rate)
+            video_stream = container.add_stream("mpeg4", rate=video_rate)
+            for video_frame in self.create_video_frames(
+                width=width, height=height, count=duration * video_rate
+            ):
+                audio_frame = self.create_audio_frame(
+                    samples=audio_samples, pts=audio_pts, sample_rate=audio_rate
+                )
+                audio_pts += audio_samples
+                for packet in audio_stream.encode(audio_frame):
+                    container.mux(packet)
 
-            for packet in video_stream.encode(video_frame):
-                container.mux(packet)
+                for packet in video_stream.encode(video_frame):
+                    container.mux(packet)
 
-        for packet in audio_stream.encode(None):
-            container.mux(packet)
-        for packet in video_stream.encode(None):
-            container.mux(packet)
-        container.close()
+            for packet in audio_stream.encode(None):
+                container.mux(packet)
+            for packet in video_stream.encode(None):
+                container.mux(packet)
 
         return path
 
     def create_video_file(self, name, width=640, height=480, rate=30, duration=1):
         path = self.temporary_path(name)
 
-        container = av.open(path, "w")
-        if name.endswith(".png"):
-            stream = container.add_stream("png", rate=rate)
-            stream.pix_fmt = "rgb24"
-        else:
-            stream = container.add_stream("mpeg4", rate=rate)
-        for frame in self.create_video_frames(
-            width=width, height=height, count=duration * rate
-        ):
-            for packet in stream.encode(frame):
+        with av.open(path, "w") as container:
+            if name.endswith(".png"):
+                stream = container.add_stream("png", rate=rate)
+                stream.pix_fmt = "rgb24"
+            else:
+                stream = container.add_stream("mpeg4", rate=rate)
+            for frame in self.create_video_frames(
+                width=width, height=height, count=duration * rate
+            ):
+                for packet in stream.encode(frame):
+                    container.mux(packet)
+            for packet in stream.encode(None):
                 container.mux(packet)
-        for packet in stream.encode(None):
-            container.mux(packet)
-        container.close()
 
         return path
 
@@ -540,12 +538,12 @@ class MediaRecorderTest(MediaTestCase):
         await recorder.stop()
 
         # check output media
-        container = av.open(path, "r")
-        self.assertEqual(len(container.streams), 1)
-        self.assertIn(container.streams[0].codec.name, ("mp3", "mp3float"))
-        self.assertGreater(
-            float(container.streams[0].duration * container.streams[0].time_base), 0
-        )
+        with av.open(path, "r") as container:
+            self.assertEqual(len(container.streams), 1)
+            self.assertIn(container.streams[0].codec.name, ("mp3", "mp3float"))
+            self.assertGreater(
+                float(container.streams[0].duration * container.streams[0].time_base), 0
+            )
 
     @asynctest
     async def test_audio_wav(self):
@@ -557,12 +555,12 @@ class MediaRecorderTest(MediaTestCase):
         await recorder.stop()
 
         # check output media
-        container = av.open(path, "r")
-        self.assertEqual(len(container.streams), 1)
-        self.assertEqual(container.streams[0].codec.name, "pcm_s16le")
-        self.assertGreater(
-            float(container.streams[0].duration * container.streams[0].time_base), 0
-        )
+        with av.open(path, "r") as container:
+            self.assertEqual(len(container.streams), 1)
+            self.assertEqual(container.streams[0].codec.name, "pcm_s16le")
+            self.assertGreater(
+                float(container.streams[0].duration * container.streams[0].time_base), 0
+            )
 
     @asynctest
     async def test_audio_wav_ended(self):
@@ -588,20 +586,20 @@ class MediaRecorderTest(MediaTestCase):
         await recorder.stop()
 
         # check output media
-        container = av.open(path, "r")
-        self.assertEqual(len(container.streams), 2)
+        with av.open(path, "r") as container:
+            self.assertEqual(len(container.streams), 2)
 
-        self.assertEqual(container.streams[0].codec.name, "aac")
-        self.assertGreater(
-            float(container.streams[0].duration * container.streams[0].time_base), 0
-        )
+            self.assertEqual(container.streams[0].codec.name, "aac")
+            self.assertGreater(
+                float(container.streams[0].duration * container.streams[0].time_base), 0
+            )
 
-        self.assertEqual(container.streams[1].codec.name, "h264")
-        self.assertEqual(container.streams[1].width, 640)
-        self.assertEqual(container.streams[1].height, 480)
-        self.assertGreater(
-            float(container.streams[1].duration * container.streams[1].time_base), 0
-        )
+            self.assertEqual(container.streams[1].codec.name, "h264")
+            self.assertEqual(container.streams[1].width, 640)
+            self.assertEqual(container.streams[1].height, 480)
+            self.assertGreater(
+                float(container.streams[1].duration * container.streams[1].time_base), 0
+            )
 
     @asynctest
     async def test_video_png(self):
@@ -613,14 +611,14 @@ class MediaRecorderTest(MediaTestCase):
         await recorder.stop()
 
         # check output media
-        container = av.open(path, "r")
-        self.assertEqual(len(container.streams), 1)
-        self.assertEqual(container.streams[0].codec.name, "png")
-        self.assertGreater(
-            float(container.streams[0].duration * container.streams[0].time_base), 0
-        )
-        self.assertEqual(container.streams[0].width, 640)
-        self.assertEqual(container.streams[0].height, 480)
+        with av.open(path, "r") as container:
+            self.assertEqual(len(container.streams), 1)
+            self.assertEqual(container.streams[0].codec.name, "png")
+            self.assertGreater(
+                float(container.streams[0].duration * container.streams[0].time_base), 0
+            )
+            self.assertEqual(container.streams[0].width, 640)
+            self.assertEqual(container.streams[0].height, 480)
 
     @asynctest
     async def test_video_mp4(self):
@@ -632,14 +630,14 @@ class MediaRecorderTest(MediaTestCase):
         await recorder.stop()
 
         # check output media
-        container = av.open(path, "r")
-        self.assertEqual(len(container.streams), 1)
-        self.assertEqual(container.streams[0].codec.name, "h264")
-        self.assertGreater(
-            float(container.streams[0].duration * container.streams[0].time_base), 0
-        )
-        self.assertEqual(container.streams[0].width, 640)
-        self.assertEqual(container.streams[0].height, 480)
+        with av.open(path, "r") as container:
+            self.assertEqual(len(container.streams), 1)
+            self.assertEqual(container.streams[0].codec.name, "h264")
+            self.assertGreater(
+                float(container.streams[0].duration * container.streams[0].time_base), 0
+            )
+            self.assertEqual(container.streams[0].width, 640)
+            self.assertEqual(container.streams[0].height, 480)
 
     @asynctest
     async def test_video_mp4_uhd(self):
@@ -651,11 +649,11 @@ class MediaRecorderTest(MediaTestCase):
         await recorder.stop()
 
         # check output media
-        container = av.open(path, "r")
-        self.assertEqual(len(container.streams), 1)
-        self.assertEqual(container.streams[0].codec.name, "h264")
-        self.assertGreater(
-            float(container.streams[0].duration * container.streams[0].time_base), 0
-        )
-        self.assertEqual(container.streams[0].width, 3840)
-        self.assertEqual(container.streams[0].height, 2160)
+        with av.open(path, "r") as container:
+            self.assertEqual(len(container.streams), 1)
+            self.assertEqual(container.streams[0].codec.name, "h264")
+            self.assertGreater(
+                float(container.streams[0].duration * container.streams[0].time_base), 0
+            )
+            self.assertEqual(container.streams[0].width, 3840)
+            self.assertEqual(container.streams[0].height, 2160)
