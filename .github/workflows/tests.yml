@@ -101,9 +101,9 @@ jobs:
             arch: i686
           - os: ubuntu-latest
             arch: x86_64
-          - os: windows-latest
+          - os: windows-2016
             arch: AMD64
-          - os: windows-latest
+          - os: windows-2016
             arch: x86
     steps:
       - uses: actions/checkout@v2
