@@ -102,15 +102,15 @@ class RTCDtlsTransportTest(TestCase):
         self.assertEqual(stats_b.bytesSent, stats_a.bytesReceived)
 
     @asynctest
-    async def test_data(self):
+    async def test_data(self, algorithm_name="ECSDA"):
         transport1, transport2 = dummy_ice_transport_pair()
 
-        certificate1 = RTCCertificate.generateCertificate()
+        certificate1 = RTCCertificate.generateCertificate(name=algorithm_name)
         session1 = RTCDtlsTransport(transport1, [certificate1])
         receiver1 = DummyDataReceiver()
         session1._register_data_receiver(receiver1)
 
-        certificate2 = RTCCertificate.generateCertificate()
+        certificate2 = RTCCertificate.generateCertificate(name=algorithm_name)
         session2 = RTCDtlsTransport(transport2, [certificate2])
         receiver2 = DummyDataReceiver()
         session2._register_data_receiver(receiver2)
@@ -142,6 +142,9 @@ class RTCDtlsTransportTest(TestCase):
         # try sending after close
         with self.assertRaises(ConnectionError):
             await session1._send_data(b"foo")
+
+    def test_data_with_large_certificate(self):
+        self.test_data(algorithm_name="RSASSA-PKCS1-v1_5")
 
     @asynctest
     async def test_data_handler_error(self):

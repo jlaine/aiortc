@@ -12,7 +12,7 @@ import pylibsrtp
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from OpenSSL import SSL, crypto
 from pyee.asyncio import AsyncIOEventEmitter
 from pylibsrtp import Policy, Session
@@ -132,13 +132,16 @@ class RTCCertificate:
         ]
 
     @classmethod
-    def generateCertificate(cls: Type[CERTIFICATE_T]) -> CERTIFICATE_T:
+    def generateCertificate(cls: Type[CERTIFICATE_T], name="ECDSA") -> CERTIFICATE_T:
         """
         Create and return an X.509 certificate and corresponding private key.
 
         :rtype: RTCCertificate
         """
-        key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+        if name == "RSASSA-PKCS1-v1_5":
+            key = rsa.generate_private_key(public_exponent=65537, key_size=4096)
+        else:
+            key = ec.generate_private_key(ec.SECP256R1(), default_backend())
         cert = generate_certificate(key)
         return cls(
             key=crypto.PKey.from_cryptography_key(key),
@@ -279,6 +282,8 @@ class RTCDtlsTransport(AsyncIOEventEmitter):
     :param certificates: A list of :class:`RTCCertificate` (only one is allowed
         currently).
     """
+
+    LARGE_BUFFER = 65536
 
     def __init__(
         self, transport: RTCIceTransport, certificates: List[RTCCertificate]
@@ -616,7 +621,7 @@ class RTCDtlsTransport(AsyncIOEventEmitter):
         Flush outgoing data which OpenSSL put in our BIO to the transport.
         """
         try:
-            data = self.ssl.bio_read(1500)
+            data = self.ssl.bio_read(self.LARGE_BUFFER)
         except SSL.Error:
             data = b""
         if data:
